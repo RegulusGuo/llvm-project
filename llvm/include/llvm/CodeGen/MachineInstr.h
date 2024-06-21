@@ -31,6 +31,7 @@
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ArrayRecycler.h"
 #include "llvm/Support/TrailingObjects.h"
+#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -118,7 +119,7 @@ private:
 
   // Operands are allocated by an ArrayRecycler.
   MachineOperand *Operands = nullptr;   // Pointer to the first operand.
-  unsigned NumOperands = 0;             // Number of operands on instruction.
+  volatile unsigned NumOperands = 0;             // Number of operands on instruction.
 
   uint16_t Flags = 0;                   // Various bits of additional
                                         // information about machine
@@ -478,7 +479,19 @@ public:
   unsigned getOpcode() const { return MCID->Opcode; }
 
   /// Retuns the total number of operands.
-  unsigned getNumOperands() const { return NumOperands; }
+  __attribute__((noinline)) unsigned getNumOperands() const { 
+    // errs() << NumOperands << "\n";
+    unsigned long long rdi_out = 0;
+    asm volatile (
+      "movq %%rdi, %[rdi_out]\n"
+      :[rdi_out] "=r" (rdi_out)
+      :
+      :
+    );
+
+    assert(rdi_out != 0x0 && "rdi == 0!");
+    return NumOperands;
+  }
 
   /// Returns the total number of operands which are debug locations.
   unsigned getNumDebugOperands() const {

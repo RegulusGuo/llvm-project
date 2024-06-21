@@ -1098,6 +1098,21 @@ let Predicates = [HasComplxNum, HasNEON] in {
                          (v4f32 (bitconvert (v2i64 (AArch64duplane64 (v2i64 V128:$Rm), VectorIndexD:$idx))))>;
 }
 
+// @note Add by phantom
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
+class AArch64RegVault<bit cryptoOp, bits<3> idx, string opcodestr>
+    : AArch64InstRegVault<cryptoOp, idx, (outs GPR64sp:$Rd), (ins GPR64sp:$Rn, uimm1:$direction, uimm3:$range),
+              opcodestr, "\t$Rd, $Rn, $direction, $range">;
+
+def CRETK : AArch64RegVault<0b0, 0b000, "cretk">, Sched<[WriteI, ReadI, ReadI]>;
+def CRDTK : AArch64RegVault<0b1, 0b000, "crdtk">, Sched<[WriteI, ReadI, ReadI]>;
+def CREMK : AArch64RegVault<0b0, 0b001, "cremk">, Sched<[WriteI, ReadI, ReadI]>;
+def CRDMK : AArch64RegVault<0b1, 0b001, "crdmk">, Sched<[WriteI, ReadI, ReadI]>;
+def CREAK : AArch64RegVault<0b0, 0b010, "creak">, Sched<[WriteI, ReadI, ReadI]>;
+def CRDAK : AArch64RegVault<0b1, 0b010, "crdak">, Sched<[WriteI, ReadI, ReadI]>;
+def CREBK : AArch64RegVault<0b0, 0b011, "crebk">, Sched<[WriteI, ReadI, ReadI]>;
+def CRDBK : AArch64RegVault<0b1, 0b011, "crdbk">, Sched<[WriteI, ReadI, ReadI]>;
+
 // v8.3a Pointer Authentication
 // These instructions inhabit part of the hint space and so can be used for
 // armv8 targets. Keeping the old HINT mnemonic when compiling without PA is

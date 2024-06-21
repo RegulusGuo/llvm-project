@@ -40,6 +40,10 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeRISCVTarget() {
   initializeRISCVMergeBaseOffsetOptPass(*PR);
   initializeRISCVExpandPseudoPass(*PR);
   initializeRISCVInsertVSETVLIPass(*PR);
+  
+  //===== Add by SimonSungm =====//
+  initializeRISCVPPPRAPPass(*PR);
+  initializeRISCVPPPLSPPass(*PR);
 }
 
 static StringRef computeDataLayout(const Triple &TT) {
@@ -188,6 +192,10 @@ void RISCVPassConfig::addPreEmitPass2() {
   // possibility for other passes to break the requirements for forward
   // progress in the LR/SC block.
   addPass(createRISCVExpandAtomicPseudoPass());
+
+  //===== Add by SimonSungm =====//
+  addPass(createRISCVPPPLSPPass()); 
+  addPass(createRISCVPPPRAPPass()); // Return Address Protection
 }
 
 void RISCVPassConfig::addPreRegAlloc() {

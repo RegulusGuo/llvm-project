@@ -1702,6 +1702,7 @@ static bool isFuncOnlyAttr(Attribute::AttrKind Kind) {
   case Attribute::Speculatable:
   case Attribute::StrictFP:
   case Attribute::NullPointerIsValid:
+  case Attribute::NoSpillingFunc:
   case Attribute::MustProgress:
   case Attribute::NoProfile:
     return true;

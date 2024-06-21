@@ -48,6 +48,7 @@ def InstFormatCA     : InstFormat<14>;
 def InstFormatCB     : InstFormat<15>;
 def InstFormatCJ     : InstFormat<16>;
 def InstFormatOther  : InstFormat<17>;
+def InstFormatRegVault : InstFormat<18>;
 
 class RISCVVConstraint<bits<3> val> {
   bits<3> Value = val;
@@ -132,6 +133,9 @@ def OPC_BRANCH    : RISCVOpcode<0b1100011>;
 def OPC_JALR      : RISCVOpcode<0b1100111>;
 def OPC_JAL       : RISCVOpcode<0b1101111>;
 def OPC_SYSTEM    : RISCVOpcode<0b1110011>;
+
+// Add by phantom
+def OPC_RegVault  : RISCVOpcode<0b1101011>;
 
 class RVInst<dag outs, dag ins, string opcodestr, string argstr,
              list<dag> pattern, InstFormat format>
@@ -403,6 +407,25 @@ class RVInstJ<RISCVOpcode opcode, dag outs, dag ins, string opcodestr,
   let Inst{30-21} = imm20{9-0};
   let Inst{20} = imm20{10};
   let Inst{19-12} = imm20{18-11};
+  let Inst{11-7} = rd;
+  let Opcode = opcode.Value;
+}
+
+class RVInstRegVault<bit cryptoOp, bits<3> funct3, RISCVOpcode opcode, dag outs, dag ins, string opcodestr,
+              string argstr>
+    : RVInst<outs, ins, opcodestr, argstr, [], InstFormatRegVault> {
+  bits<3> startByte;
+  bits<3> endByte;
+  bits<5> rs2;
+  bits<5> rs1;
+  bits<5> rd;
+
+  let Inst{31-29} = endByte;
+  let Inst{28-26} = startByte;
+  let Inst{25} = cryptoOp;
+  let Inst{24-20} = rs2;
+  let Inst{19-15} = rs1;
+  let Inst{14-12} = funct3;
   let Inst{11-7} = rd;
   let Opcode = opcode.Value;
 }

@@ -48,6 +48,8 @@ protected:
 /// is optimized and passed to the backend.
 class CodeGenOptions : public CodeGenOptionsBase {
 public:
+  bool fpScaner, randomContent;
+  
   enum InliningMethod {
     NormalInlining,     // Use the standard function inlining pass.
     OnlyHintInlining,   // Inline only (implicitly) hinted functions.

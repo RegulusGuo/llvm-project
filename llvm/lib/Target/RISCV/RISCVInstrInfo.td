@@ -159,6 +159,14 @@ def uimm5 : Operand<XLenVT>, ImmLeaf<XLenVT, [{return isUInt<5>(Imm);}]> {
   let OperandNamespace = "RISCVOp";
 }
 
+// Add by phantom
+def uimm3 : Operand<XLenVT>, ImmLeaf<XLenVT, [{return isUInt<3>(Imm);}]> {
+  let ParserMatchClass = UImmAsmOperand<3>;
+  let DecoderMethod = "decodeUImmOperand<3>";
+  let OperandType = "OPERAND_UIMM3";
+  let OperandNamespace = "RISCVOp";
+}
+
 def simm12 : Operand<XLenVT>, ImmLeaf<XLenVT, [{return isInt<12>(Imm);}]> {
   let ParserMatchClass = SImmAsmOperand<12>;
   let EncoderMethod = "getImmOpValue";
@@ -448,6 +456,12 @@ class Priv<string opcodestr, bits<7> funct7>
     : RVInstR<funct7, 0b000, OPC_SYSTEM, (outs), (ins GPR:$rs1, GPR:$rs2),
               opcodestr, "">;
 
+// @note Add by phantom
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
+class RegVault_rr<bit cryptoOp, bits<3> funct3, string opcodestr>
+    : RVInstRegVault<cryptoOp, funct3, OPC_RegVault, (outs GPR:$rd), (ins GPR:$rs1, GPR:$rs2, uimm3:$startByte, uimm3:$endByte),
+              opcodestr, "$rd, $rs1, $rs2, $startByte, $endByte">;
+
 //===----------------------------------------------------------------------===//
 // Instructions
 //===----------------------------------------------------------------------===//
@@ -517,6 +531,25 @@ def SRL  : ALU_rr<0b0000000, 0b101, "srl">, Sched<[WriteShiftReg, ReadShiftReg, 
 def SRA  : ALU_rr<0b0100000, 0b101, "sra">, Sched<[WriteShiftReg, ReadShiftReg, ReadShiftReg]>;
 def OR   : ALU_rr<0b0000000, 0b110, "or">, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
 def AND  : ALU_rr<0b0000000, 0b111, "and">, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+
+/* Add by phantom
+   cretk   rd rs1 rs2 31..29=end 28..26=start 25=0  14..12=0 6..2=0x1A 1..0=3
+   crdtk   rd rs1 rs2 31..29=end 28..26=start 25=1  14..12=0 6..2=0x1A 1..0=3
+   cremk   rd rs1 rs2 31..29=end 28..26=start 25=0  14..12=1 6..2=0x1A 1..0=3
+   crdmk   rd rs1 rs2 31..29=end 28..26=start 25=1  14..12=1 6..2=0x1A 1..0=3
+   creak   rd rs1 rs2 31..29=end 28..26=start 25=0  14..12=2 6..2=0x1A 1..0=3
+   crdak   rd rs1 rs2 31..29=end 28..26=start 25=1  14..12=2 6..2=0x1A 1..0=3
+   crebk   rd rs1 rs2 31..29=end 28..26=start 25=0  14..12=3 6..2=0x1A 1..0=3
+   crdbk   rd rs1 rs2 31..29=end 28..26=start 25=1  14..12=3 6..2=0x1A 1..0=3 */
+
+def CRETK : RegVault_rr<0b0, 0b000, "cretk">, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def CRDTK : RegVault_rr<0b1, 0b000, "crdtk">, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def CREMK : RegVault_rr<0b0, 0b001, "cremk">, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def CRDMK : RegVault_rr<0b1, 0b001, "crdmk">, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def CREAK : RegVault_rr<0b0, 0b010, "creak">, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def CRDAK : RegVault_rr<0b1, 0b010, "crdak">, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def CREBK : RegVault_rr<0b0, 0b011, "crebk">, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
+def CRDBK : RegVault_rr<0b1, 0b011, "crdbk">, Sched<[WriteIALU, ReadIALU, ReadIALU]>;
 
 let hasSideEffects = 1, mayLoad = 0, mayStore = 0 in {
 def FENCE : RVInstI<0b000, OPC_MISC_MEM, (outs),

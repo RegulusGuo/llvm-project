@@ -1019,7 +1019,12 @@ bool RISCVFrameLowering::spillCalleeSavedRegisters(
   }
 
   // Manually spill values not spilled by libcall.
-  const auto &NonLibcallCSI = getNonLibcallCSI(*MF, CSI);
+  // const auto &NonLibcallCSI = getNonLibcallCSI(*MF, CSI);
+  auto NonLibcallCSI = getNonLibcallCSI(*MF, CSI);
+  if (!NonLibcallCSI.empty()) {
+    NonLibcallCSI.push_back(NonLibcallCSI[0]);
+    NonLibcallCSI.erase(NonLibcallCSI.begin());
+  }
   for (auto &CS : NonLibcallCSI) {
     // Insert the spill to the stack frame.
     Register Reg = CS.getReg();
@@ -1044,7 +1049,12 @@ bool RISCVFrameLowering::restoreCalleeSavedRegisters(
 
   // Manually restore values not restored by libcall. Insert in reverse order.
   // loadRegFromStackSlot can insert multiple instructions.
-  const auto &NonLibcallCSI = getNonLibcallCSI(*MF, CSI);
+  // const auto &NonLibcallCSI = getNonLibcallCSI(*MF, CSI);
+  auto NonLibcallCSI = getNonLibcallCSI(*MF, CSI);
+  if (!NonLibcallCSI.empty()) {
+    NonLibcallCSI.push_back(NonLibcallCSI[0]);
+    NonLibcallCSI.erase(NonLibcallCSI.begin());
+  }
   for (auto &CS : reverse(NonLibcallCSI)) {
     Register Reg = CS.getReg();
     const TargetRegisterClass *RC = TRI->getMinimalPhysRegClass(Reg);

@@ -591,6 +591,9 @@ std::string Attribute::getAsString(bool InAttrGrp) const {
     return Result;
   }
 
+  if (hasAttribute(Attribute::NoSpillingFunc))
+      return "no_spilling_func";
+
   // Convert target-dependent attributes to strings of the form:
   //
   //   "kind"

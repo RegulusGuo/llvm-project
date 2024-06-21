@@ -123,6 +123,174 @@ void LiveIntervals::releaseMemory() {
   VNInfoAllocator.Reset();
 }
 
+namespace {
+  bool isFuncPtr(Type *type) {
+    if (type->isPointerTy() &&
+        type->getPointerElementType()->isFunctionTy())
+        return true;
+    return false;
+  }
+}
+
+void printLine(const MachineInstr *MInst) {
+    const DebugLoc &dbg = MInst->getDebugLoc();
+    if (dbg) {
+        outs() << "In \033[32m" << dbg->getFilename() << ":\033[1m";
+        if (dbg->getInlinedAt())
+            outs() << dbg->getInlinedAt()->getLine() << "\033[0m inline from \033[34m" << dbg->getFilename() << ":\033[1m" << dbg->getLine();
+        else
+            outs() << dbg->getLine();
+        outs() << "\033[0m:\n";
+    }
+    outs() << "\033[1;30m" << *MInst << "\033[0m\n";
+}
+
+void LiveIntervals::markFPRegs() {
+  // errs() << "Entering markFPRegs\n";
+  // assert(0);
+  static const unsigned RISCV_ADJCALLSTACKDOWN = 193;
+  static const unsigned RISCV_CRDAK = 360;
+  static const unsigned RISCV_CREAK = 364;
+  DenseSet<Register> FPRegsSet;
+  SmallVector<Register, 16> FPRegsVec;
+
+  // find the return argument(virtual register) of a function
+  auto getFuncRetVirReg = [](MachineInstr *MInst) -> Register {
+    // walk forward from call instruction until `VReg = COPY $x10`
+    while (1) {
+      printLine(MInst);
+      Register reg(0xdeadbeef);
+      bool b = true;
+      if (MInst->getNumOperands() <= 1)
+        goto next_loop;
+      
+      if (b) {
+        b &= MInst->isCopy();
+      }
+
+      if (b) {
+        errs() << "isCopy passed\n";
+        b &= MInst->getOperand(1).isReg();
+      }
+      
+      if (b) {
+        errs() << "isReg passed\n";
+        b &= MInst->getOperand(1).getReg().isPhysical();
+      }
+      
+      if (b) {
+        errs() << "isPhysical passed\n";
+        errs() << "Register ID == " << MInst->getOperand(1).getReg().operator llvm::MCRegister().id() << "\n";
+        b &= MInst->getOperand(1).getReg().operator llvm::MCRegister().id() == 50;
+      }
+      
+      if (b) {
+        errs() << "All check passed\n";
+        break;
+      }
+      
+    next_loop:
+      MInst = MInst->getNextNode();
+      // assert(MInst != nullptr && "MInst == NULL!");
+      if (MInst == nullptr)
+        return reg;
+    }
+    return MInst->getOperand(0).getReg();
+  };
+  // find the argument(virtual register) of a function
+  auto getFuncArgVirReg = [](MachineInstr *MInst, unsigned regNo) -> Register {
+    // walk backward from call instruction until `$x10 = COPY VReg`
+    while (!(MInst->isCopy() &&
+             MInst->getOperand(0).isReg() &&
+             MInst->getOperand(0).getReg().isPhysical() &&
+             MInst->getOperand(0).getReg().operator llvm::MCRegister().id() == 50)) {
+      if (MInst->getOpcode() == RISCV_ADJCALLSTACKDOWN)
+        return 0;
+      MInst = MInst->getPrevNode();
+    }
+    return MInst->getOperand(1).getReg();
+  };
+  auto insertFPReg = [&](Register reg) {
+    if (reg.isVirtual() && FPRegsSet.insert(reg).second)
+      FPRegsVec.push_back(reg);
+  };
+
+  // find fp from this function parameters
+  // errs() << "find fp from this function parameters\n";
+  Function &F = MF->getFunction();
+  for (unsigned i = 0, e = F.arg_size(); i != e; ++i) {
+    if (isFuncPtr(F.getArg(i)->getType())) {
+      Register reg = MRI->getLiveInVirtReg(MCRegister(50 + i));
+      insertFPReg(reg);
+    }
+  }
+  
+  // find fp from encrypt/decrypt calls and return values of function calls
+  for (MachineBasicBlock &MBB : *MF)
+    for (MachineInstr &MI : MBB) {
+        if (MI.getOpcode() == RISCV_CREAK) {
+            if (MI.getOperand(1).getReg().isVirtual()) {
+                insertFPReg(MI.getOperand(1).getReg());
+            }
+        } else if (MI.getOpcode() == RISCV_CRDAK) {
+            if (MI.getOperand(0).getReg().isVirtual()) {
+                insertFPReg(MI.getOperand(0).getReg());
+            }
+        } else if (MI.getDesc().isCall()) {
+            // find fp return value
+            MachineOperand &calledFunc = MI.getOperand(0);
+            if (!calledFunc.isGlobal())
+                continue;
+            const GlobalValue *gv = calledFunc.getGlobal();
+            if (auto func = dyn_cast<Function>(gv)) {
+                if (isFuncPtr(func->getReturnType())) {
+                    errs() << "invoking getFuncRetVirReg\n";
+                    printLine(&MI);
+                    Register reg = getFuncRetVirReg(MI.getNextNode());
+                    if (reg.id() != 0xdeadbeef) {
+                      errs() << "\033[33mreg.id() == " << reg.id() << "\033[0m\n";
+                      insertFPReg(reg);
+                    } else {
+                      errs() << "\033[33mFound 0xdeadbeef...\033[0m\n";
+                    }
+                }
+            }
+        }
+    }
+  
+  // propagate fp
+  // errs() << "propagate fp\n";
+  for (unsigned i = 0; i < FPRegsVec.size(); ++i) {
+    Register reg = FPRegsVec[i];
+    // walk through use chain
+    for (auto beg = MRI->use_instr_nodbg_begin(reg), end = MRI->use_instr_nodbg_end(); beg != end; ++beg) {
+      if (beg->isCopy()) {
+        if (beg->getOperand(0).isReg()) {
+          Register tagReg = beg->getOperand(0).getReg();
+          insertFPReg(tagReg);
+        }
+      }
+    }
+    // walk through def chain
+    for (auto beg = MRI->def_instr_begin(reg), end = MRI->def_instr_end(); beg != end; ++beg) {
+      if (beg->isCopy()) {
+        if (beg->getOperand(1).isReg()) {
+          Register tagReg = beg->getOperand(1).getReg();
+          insertFPReg(tagReg);
+        }
+      }
+    }
+  }
+
+  for (unsigned i = 0, e = FPRegsVec.size(); i != e; ++i) {
+    Register reg = FPRegsVec[i];
+    if (hasInterval(reg))
+      getInterval(reg).markNotSpillable();
+  }
+  // errs() << "Exiting markFPRegs\n";
+}
+
+
 bool LiveIntervals::runOnMachineFunction(MachineFunction &fn) {
   MF = &fn;
   MRI = &MF->getRegInfo();

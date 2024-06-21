@@ -36,6 +36,7 @@
 #ifndef LLVM_LIB_CODEGEN_REGALLOCBASE_H
 #define LLVM_LIB_CODEGEN_REGALLOCBASE_H
 
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/CodeGen/RegisterClassInfo.h"
 
@@ -67,6 +68,8 @@ protected:
   LiveIntervals *LIS = nullptr;
   LiveRegMatrix *Matrix = nullptr;
   RegisterClassInfo RegClassInfo;
+
+  SmallVector<LiveInterval *, 16> CalleeFPIntervals;
 
   /// Inst which is a def of an original reg and whose defs are already all
   /// dead after remat is saved in DeadRemats. The deletion of such inst is
@@ -110,6 +113,8 @@ protected:
 
   /// Method called when the allocator is about to remove a LiveInterval.
   virtual void aboutToRemoveInterval(LiveInterval &LI) {}
+
+  virtual bool isProtectedCalleeSavedReg(Register Reg);
 
 public:
   /// VerifyEnabled - True when -verify-regalloc is given.

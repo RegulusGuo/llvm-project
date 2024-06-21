@@ -238,6 +238,10 @@
 #include "llvm/Transforms/Vectorize/SLPVectorizer.h"
 #include "llvm/Transforms/Vectorize/VectorCombine.h"
 
+// Add by phantom
+#include "llvm/Transforms/fpscan/fpscan.h"
+#include "llvm/Transforms/RandomContent/RandomContent.h"
+
 using namespace llvm;
 
 static cl::opt<InliningAdvisorMode> UseInlineAdvisor(

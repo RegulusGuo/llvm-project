@@ -770,6 +770,24 @@ def : WOSysReg<"ICC_SGI0R_EL1",      0b11, 0b000, 0b1100, 0b1011, 0b111>;
 // Read-write regs
 //===----------------------
 
+//===-------------------------------------
+// Supervisor Encryption Key
+//===-------------------------------------
+//                       Op0    Op1    CRn    CRm    Op2
+def : RWSysReg<"scrtkeyl", 0b11, 0b000, 0b1111, 0b1010, 0b000>;
+def : RWSysReg<"scrtkeyh", 0b11, 0b000, 0b1111, 0b1010, 0b001>;
+def : RWSysReg<"scrakeyl", 0b11, 0b000, 0b1111, 0b1010, 0b010>;
+def : RWSysReg<"scrakeyh", 0b11, 0b000, 0b1111, 0b1010, 0b011>;
+def : RWSysReg<"scrbkeyl", 0b11, 0b000, 0b1111, 0b1010, 0b100>;
+def : RWSysReg<"scrbkeyh", 0b11, 0b000, 0b1111, 0b1010, 0b101>;
+
+//===-------------------------------------
+// Machine Encryption Key
+// Add by SimonSungm
+//===-------------------------------------
+def : RWSysReg<"mcrmkeyl", 0b11, 0b000, 0b1111, 0b1010, 0b110>;
+def : RWSysReg<"mcrmkeyh", 0b11, 0b000, 0b1111, 0b1010, 0b111>;
+
 //                                 Op0    Op1     CRn     CRm    Op2
 def : RWSysReg<"OSDTRRX_EL1",        0b10, 0b000, 0b0000, 0b0000, 0b010>;
 def : RWSysReg<"OSDTRTX_EL1",        0b10, 0b000, 0b0000, 0b0011, 0b010>;

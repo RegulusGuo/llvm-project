@@ -59,6 +59,10 @@
 #include "llvm/Transforms/Utils/Debugify.h"
 #include <algorithm>
 #include <memory>
+// Add by phantom
+#include "llvm/Transforms/fpscan/fpscan.h"
+#include "llvm/Transforms/RandomContent/RandomContent.h"
+
 using namespace llvm;
 using namespace opt_tool;
 

@@ -3782,6 +3782,12 @@ def ReleaseHandle : InheritableParamAttr {
   let Documentation = [ReleaseHandleDocs];
 }
 
+def NoSpillingFunc : InheritableAttr {
+    let Spellings = [GNU<"no_spilling_func">];
+    let Subjects = SubjectList<[Function]>;
+    let Documentation = [Undocumented];
+}
+
 def Builtin : InheritableAttr {
   let Spellings = [];
   let Args = [UnsignedArgument<"ID">];

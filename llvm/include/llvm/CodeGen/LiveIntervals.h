@@ -101,6 +101,9 @@ class VirtRegMap;
     LiveIntervals();
     ~LiveIntervals() override;
 
+    /// mark virtual registers that contains function pointers
+    void markFPRegs();
+
     /// Calculate the spill weight to assign to a single instruction.
     static float getSpillWeight(bool isDef, bool isUse,
                                 const MachineBlockFrequencyInfo *MBFI,

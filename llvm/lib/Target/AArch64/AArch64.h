@@ -97,6 +97,13 @@ void initializeLDTLSCleanupPass(PassRegistry&);
 void initializeSVEIntrinsicOptsPass(PassRegistry&);
 void initializeAArch64StackTaggingPass(PassRegistry&);
 void initializeAArch64StackTaggingPreRAPass(PassRegistry&);
+
+// Add by Ruorong Guo
+FunctionPass *createAArch64PPPLSPPass();
+void initializeAArch64PPPLSPPass(PassRegistry &);
+
+FunctionPass *createAArch64PPPRAPPass();
+void initializeAArch64PPPRAPPass(PassRegistry &);
 } // end namespace llvm
 
 #endif

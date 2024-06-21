@@ -32,6 +32,9 @@
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+
+#include "llvm/Support/raw_ostream.h"
+
 using namespace llvm;
 
 static cl::opt<bool> EnableTrapUnreachable("trap-unreachable",
@@ -104,6 +107,7 @@ static TargetPassConfig *
 addPassesToGenerateCode(LLVMTargetMachine &TM, PassManagerBase &PM,
                         bool DisableVerify,
                         MachineModuleInfoWrapperPass &MMIWP) {
+  // errs() << "[llvm] in addPassesToGenerateCode\n";
   // Targets may override createPassConfig to provide a target-specific
   // subclass.
   TargetPassConfig *PassConfig = TM.createPassConfig(PM);
@@ -210,6 +214,7 @@ bool LLVMTargetMachine::addPassesToEmitFile(
     CodeGenFileType FileType, bool DisableVerify,
     MachineModuleInfoWrapperPass *MMIWP) {
   // Add common CodeGen passes.
+  // errs() << "[llvm] in addPassesToEmitFile\n";
   if (!MMIWP)
     MMIWP = new MachineModuleInfoWrapperPass(this);
   TargetPassConfig *PassConfig =

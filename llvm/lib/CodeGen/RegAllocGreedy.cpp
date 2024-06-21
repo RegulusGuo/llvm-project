@@ -139,6 +139,7 @@ static cl::opt<bool> ConsiderLocalIntervalCost(
 
 static RegisterRegAlloc greedyRegAlloc("greedy", "greedy register allocator",
                                        createGreedyRegisterAllocator);
+static std::set<int> SpilledSlots;
 
 namespace {
 
@@ -443,6 +444,10 @@ public:
   static char ID;
 
 private:
+  void protectCalleeFPRegs();
+  void ProtectSpilledReg(MachineFunction &mf, const TargetInstrInfo *TII);
+  unsigned GetAvailablePhyReg(MachineBasicBlock::iterator MI);
+
   MCRegister selectOrSplitImpl(LiveInterval &, SmallVectorImpl<Register> &,
                                SmallVirtRegSet &, unsigned = 0);
 
@@ -3129,6 +3134,7 @@ MCRegister RAGreedy::selectOrSplitImpl(LiveInterval &VirtReg,
                        TimerGroupDescription, TimePassesIsEnabled);
     LiveRangeEdit LRE(&VirtReg, NewVRegs, *MF, *LIS, VRM, this, &DeadRemats);
     spiller().spill(LRE);
+    SpilledSlots.insert(VRM->getStackSlot(LRE.getReg()));
     setStage(NewVRegs.begin(), NewVRegs.end(), RS_Done);
 
     // Tell LiveDebugVariables about the new ranges. Ranges not being covered by
@@ -3277,6 +3283,20 @@ RAGreedy::RAGreedyStats RAGreedy::reportStats(MachineLoop *L) {
   return Stats;
 }
 
+static const unsigned RISCV_CRDTK = 363;
+static const unsigned RISCV_CRETK = 367;
+static const unsigned RISCV_CRDAK = 360;
+static const unsigned RISCV_CREAK = 364;
+
+static const unsigned RISCV_LD = 524;
+static const unsigned RISCV_SD = 592;
+static const unsigned RISCV_PseudoCallIndirect = 202;
+
+static const unsigned RISCV_ZERO = 1;
+static const unsigned RISCV_SP = 3;
+static const unsigned RISCV_T0 = 6;
+static const unsigned RISCV_S0 = 9;
+
 void RAGreedy::reportStats() {
   if (!ORE->allowExtraAnalysis(DEBUG_TYPE))
     return;
@@ -3302,6 +3322,255 @@ void RAGreedy::reportStats() {
     });
   }
 }
+
+unsigned RAGreedy::GetAvailablePhyReg(MachineBasicBlock::iterator MI) {
+  static const std::vector<unsigned> AvailablePhyReg = {
+      6,  7,  8,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+      20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32};
+  SlotIndex Start = Indexes->getInstructionIndex(*MI);
+  SlotIndex End = Start.getNextIndex();
+  // find a free phyReg
+  for (unsigned phy : AvailablePhyReg) {
+    if (!Matrix->checkInterference(Start, End, phy))
+      return phy;
+  }
+  return 0;
+}
+
+static unsigned find64BitVReg(MachineFunction &mf) {
+  for (MachineBasicBlock &MBB : mf)
+    for (MachineInstr &MI : MBB) {
+      if (MI.getOpcode() == RISCV_LD && MI.getOperand(0).isReg() &&
+          MI.getOperand(0).getReg().isVirtual())
+        return MI.getOperand(0).getReg();
+    }
+  return 0;
+}
+
+static void PEC_CRETK_S0(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
+                         unsigned srcReg, unsigned dstReg,
+                         const TargetInstrInfo *TII) {
+  DebugLoc DL;
+  BuildMI(MBB, MI, DL, TII->get(RISCV_CREAK))
+      .addReg(dstReg)
+      .addReg(srcReg)
+      .addReg(RISCV_S0)
+      .addImm(0)
+      .addImm(7);
+}
+
+static void PEC_CRDTK_S0(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
+                         unsigned srcReg, unsigned dstReg,
+                         const TargetInstrInfo *TII) {
+  DebugLoc DL;
+  BuildMI(MBB, MI, DL, TII->get(RISCV_CRDAK))
+      .addReg(dstReg)
+      .addReg(srcReg)
+      .addReg(RISCV_S0)
+      .addImm(0)
+      .addImm(7);
+}
+
+static void PEC_StoreToStackSlot(MachineBasicBlock &MBB,
+                                 MachineBasicBlock::iterator MI, unsigned reg,
+                                 unsigned FI, const TargetInstrInfo *TII) {
+  DebugLoc DL;
+  BuildMI(MBB, MI, DL, TII->get(RISCV_SD))
+      .addReg(reg)
+      .addFrameIndex(FI)
+      .addImm(0);
+}
+
+static void PEC_LoadFromStackSlot(MachineBasicBlock &MBB,
+                                  MachineBasicBlock::iterator MI, unsigned reg,
+                                  unsigned FI, const TargetInstrInfo *TII) {
+  DebugLoc DL;
+  BuildMI(MBB, MI, DL, TII->get(RISCV_LD))
+      .addReg(reg)
+      .addFrameIndex(FI)
+      .addImm(0);
+}
+
+void RAGreedy::ProtectSpilledReg(MachineFunction &mf,
+                                 const TargetInstrInfo *TII) {
+  if (MF->getName().str().find("__vdso") == 0)
+    return;
+  int FI;
+  unsigned SpillSlot = 0;
+  for (MachineBasicBlock &MBB : mf) {
+    for (auto MI = MBB.begin(); MI != MBB.end();) {
+      auto nextMI = std::next(MI);
+      if (unsigned reg = TII->isStoreToStackSlot(*MI, FI)) {
+        if (MI->getOpcode() == RISCV_SD &&
+            SpilledSlots.find(FI) != SpilledSlots.end()) {
+          // Spilling Store: Need Encryption before
+          if (reg == RISCV_ZERO) {
+            unsigned phy;
+            // cannot encrypt x0 register
+            // need to find a free register
+            if (!(phy = GetAvailablePhyReg(MI))) {
+              // No free register, spill one
+              phy = RISCV_T0;
+              if (!SpillSlot) {
+                unsigned TmpReg = MRI->createVirtualRegister(
+                    MRI->getRegClass(find64BitVReg(mf)));
+                SpillSlot = VRM->assignVirt2StackSlot(TmpReg);
+              }
+              PEC_CRETK_S0(MBB, MI, phy, phy, TII);
+              PEC_StoreToStackSlot(MBB, MI, phy, SpillSlot, TII);
+              PEC_LoadFromStackSlot(MBB, nextMI, phy, SpillSlot, TII);
+              PEC_CRDTK_S0(MBB, nextMI, phy, SpillSlot, TII);
+            }
+            PEC_CRETK_S0(MBB, MI, RISCV_ZERO, phy, TII);
+            MI->getOperand(0).setReg(phy);
+          } else {
+            // encrypte the register directly
+            PEC_CRETK_S0(MBB, MI, reg, reg, TII);
+            if (!MI->killsRegister(reg, TRI))
+              PEC_CRDTK_S0(MBB, nextMI, reg, reg, TII);
+          }
+        }
+      } else if (unsigned reg = TII->isLoadFromStackSlot(*MI, FI)) {
+        if (MI->getOpcode() == RISCV_LD &&
+            SpilledSlots.find(FI) != SpilledSlots.end()) {
+          // Spilling Reload: Need Decryption After
+          PEC_CRDTK_S0(MBB, nextMI, reg, reg, TII);
+        }
+      }
+      MI = nextMI;
+    }
+  }
+  SpilledSlots.clear();
+}
+
+void RAGreedy::protectCalleeFPRegs() {
+  if (MF->getName().str().find("__vdso") == 0)
+    return;
+  SmallVector<decltype(MF->begin()->begin()), 64> CallIterVec;
+  for (MachineBasicBlock &MBB : *MF)
+    for (MachineInstr &MI : MBB)
+      if (MI.getDesc().isCall())
+        CallIterVec.push_back(MI.getIterator());
+
+  for (auto CallIter : CallIterVec) {
+    SmallVector<Register, 16> protectedRegs;
+    for (LiveInterval *interval : CalleeFPIntervals)
+      if (interval->liveAt(Indexes->getInstructionIndex(*CallIter)))
+        protectedRegs.push_back(interval->reg());
+    if (protectedRegs.empty())
+      continue;
+
+    Register CallReg = 0;
+    if (CallIter->getOpcode() == RISCV_PseudoCallIndirect)
+      CallReg = CallIter->getOperand(0).getReg();
+
+    MachineBasicBlock *MBB = CallIter->getParent();
+    DebugLoc DL;
+    if (CallIter != MBB->end())
+      DL = CallIter->getDebugLoc();
+
+    auto encryptIter = CallIter;
+    auto decryptIter = std::next(CallIter, 1);
+
+    for (Register Reg : protectedRegs) {
+      if (Reg == CallReg) {
+        // the register is used by the indirect call
+        // encrypt it and save it in the stack
+        int StackSlot = VRM->getStackSlot(Reg);
+        if (StackSlot == VirtRegMap::NO_STACK_SLOT)
+          StackSlot = VRM->assignVirt2StackSlot(Reg);
+        BuildMI(*MBB, encryptIter, DL, TII->get(RISCV_CREAK), RISCV_T0)
+            .addReg(Reg)
+            .addReg(RISCV_SP)
+            .addImm(0)
+            .addImm(7);
+        BuildMI(*MBB, encryptIter, DL, TII->get(RISCV_SD))
+            .addReg(RISCV_T0)
+            .addFrameIndex(StackSlot)
+            .addImm(0);
+        BuildMI(*MBB, decryptIter, DL, TII->get(RISCV_LD), Reg)
+            .addFrameIndex(StackSlot)
+            .addImm(0);
+        BuildMI(*MBB, decryptIter, DL, TII->get(RISCV_CRDAK), Reg)
+            .addReg(Reg)
+            .addReg(RISCV_SP)
+            .addImm(0)
+            .addImm(7);
+      } else {
+        // encrypt and decrypt callee saved register directly
+        BuildMI(*MBB, encryptIter, DL, TII->get(RISCV_CREAK), Reg)
+            .addReg(Reg)
+            .addReg(RISCV_SP)
+            .addImm(0)
+            .addImm(7);
+        BuildMI(*MBB, decryptIter, DL, TII->get(RISCV_CRDAK), Reg)
+            .addReg(Reg)
+            .addReg(RISCV_SP)
+            .addImm(0)
+            .addImm(7);
+      }
+    }
+  }
+
+  // optimize unnecessary decrypt and encrypt
+  for (MachineBasicBlock &MBB : *MF) {
+    SmallVector<std::pair<Register, MachineInstr *>, 32> decryptVec;
+    for (auto MI = MBB.begin(); MI != MBB.end();) {
+      auto nextMI = std::next(MI, 1);
+      if (MI->getOpcode() == RISCV_CRDAK &&
+          MI->getOperand(2).getReg() == RISCV_SP)
+        // for the decrypt instruction with sp context, push it to the vector
+        decryptVec.emplace_back(MI->getOperand(0).getReg(), &*MI);
+      else if (MI->getOpcode() == RISCV_CREAK &&
+               MI->getOperand(2).getReg() == RISCV_SP) {
+        // for the encrypt instruction with sp context, if there is a
+        // corresponding decrypting register record on the vector
+        // 1. if the src register and dest register of the instruction are the
+        // same
+        //    remove the both encrypt and decrypt instructions
+        // 2. if the src register and dest register of the instruction are
+        // different CRDAK s1, s1, sp; ... CREAK t0, s1, sp; SD t0 STACKSLOT =>
+        // ... SD s1 STACKSLOT; CRDAK s1, s1, sp;
+        Register srcReg = MI->getOperand(1).getReg();
+        Register destReg = MI->getOperand(0).getReg();
+        for (auto &RegMIPair : decryptVec) {
+          if (srcReg == RegMIPair.first) {
+            RegMIPair.first = 0;
+            if (srcReg == destReg) {
+              RegMIPair.second->eraseFromParent();
+              MI->eraseFromParent();
+            } else {
+
+              BuildMI(MBB, MI, MI->getDebugLoc(), TII->get(RISCV_SD), srcReg)
+                  .addFrameIndex(VRM->getStackSlot(srcReg))
+                  .addImm(0);
+              RegMIPair.second->removeFromParent();
+              MBB.insert(MI, RegMIPair.second);
+              nextMI = nextMI->getNextNode();
+              MI->getNextNode()->eraseFromParent();
+              MI->eraseFromParent();
+            }
+            break;
+          }
+        }
+      } else {
+        for (auto &RegMIPair : decryptVec) {
+          if (!RegMIPair.first.isVirtual())
+            continue;
+          auto isReadWrite = MI->readsWritesVirtualRegister(RegMIPair.first);
+          if (isReadWrite.first)
+            RegMIPair.first = 0;
+          else if (isReadWrite.second) {
+            RegMIPair.first = 0;
+            MI->eraseFromParent();
+          }
+        }
+      }
+      MI = nextMI;
+    }
+  }
+}
+
 
 bool RAGreedy::runOnMachineFunction(MachineFunction &mf) {
   LLVM_DEBUG(dbgs() << "********** GREEDY REGISTER ALLOCATION **********\n"
@@ -3366,6 +3635,9 @@ bool RAGreedy::runOnMachineFunction(MachineFunction &mf) {
   postOptimization();
   reportStats();
 
+  // protectCalleeFPRegs();
+  // if (mf.getFunction().hasFnAttribute("no_spilling_func"))
+  //   ProtectSpilledReg(mf, TII);
   releaseMemory();
   return true;
 }

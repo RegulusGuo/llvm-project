@@ -51,6 +51,8 @@
 #include <cassert>
 #include <string>
 
+#include "llvm/Support/raw_ostream.h"
+
 using namespace llvm;
 
 static cl::opt<bool>
@@ -1052,6 +1054,7 @@ bool TargetPassConfig::addCoreISelPasses() {
 }
 
 bool TargetPassConfig::addISelPasses() {
+  // errs() << "[llvm] in addISelPasses\n";
   if (TM->useEmulatedTLS())
     addPass(createLowerEmuTLSPass());
 

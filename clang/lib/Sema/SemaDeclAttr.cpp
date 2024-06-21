@@ -8320,6 +8320,10 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
   case ParsedAttr::AT_UseHandle:
     handleHandleAttr<UseHandleAttr>(S, D, AL);
     break;
+  
+  case ParsedAttr::AT_NoSpillingFunc:
+    handleSimpleAttribute<NoSpillingFuncAttr>(S, D, AL);
+    break;
 
   case ParsedAttr::AT_EnforceTCB:
     handleEnforceTCBAttr<EnforceTCBAttr, EnforceTCBLeafAttr>(S, D, AL);

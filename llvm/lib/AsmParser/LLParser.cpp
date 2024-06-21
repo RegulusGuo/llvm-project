@@ -1405,6 +1405,7 @@ bool LLParser::parseFnAttributeValuePairs(AttrBuilder &B,
     case lltok::kw_speculative_load_hardening:
       B.addAttribute(Attribute::SpeculativeLoadHardening);
       break;
+    case lltok::kw_no_spilling_func: B.addAttribute(Attribute::NoSpillingFunc); break;
     case lltok::kw_strictfp: B.addAttribute(Attribute::StrictFP); break;
     case lltok::kw_uwtable: B.addAttribute(Attribute::UWTable); break;
     case lltok::kw_willreturn: B.addAttribute(Attribute::WillReturn); break;

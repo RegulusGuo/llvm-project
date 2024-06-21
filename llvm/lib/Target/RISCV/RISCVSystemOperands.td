@@ -189,6 +189,24 @@ def : SysReg<"stval", 0x143>;
 def : SysReg<"sip", 0x144>;
 
 //===-------------------------------------
+// Supervisor Encryption Key
+// Add by SimonSungm
+//===-------------------------------------
+def : SysReg<"scrtkeyl", 0x5F0>;
+def : SysReg<"scrtkeyh", 0x5F1>;
+def : SysReg<"scrakeyl", 0x5F2>;
+def : SysReg<"scrakeyh", 0x5F3>;
+def : SysReg<"scrbkeyl", 0x5F4>;
+def : SysReg<"scrbkeyh", 0x5F5>;
+
+//===-------------------------------------
+// Machine Encryption Key
+// Add by SimonSungm
+//===-------------------------------------
+def : SysReg<"mcrmkeyl", 0x7F0>;
+def : SysReg<"mcrmkeyh", 0x7F1>;
+
+//===-------------------------------------
 // Supervisor Protection and Translation
 //===-------------------------------------
 let DeprecatedName = "sptbr" in

@@ -121,6 +121,10 @@ MODULE_PASS("sancov-module", ModuleSanitizerCoveragePass())
 MODULE_PASS("memprof-module", ModuleMemProfilerPass())
 MODULE_PASS("poison-checking", PoisonCheckingPass())
 MODULE_PASS("pseudo-probe-update", PseudoProbeUpdatePass())
+
+// Add by phantom
+MODULE_PASS("fpscan", fpscan())
+MODULE_PASS("RandomContent", RandomContent())
 #undef MODULE_PASS
 
 #ifndef CGSCC_ANALYSIS

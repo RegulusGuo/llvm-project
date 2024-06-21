@@ -6173,6 +6173,17 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddLastArg(CmdArgs, options::OPT_flegacy_pass_manager,
                   options::OPT_fno_legacy_pass_manager);
 
+  Args.AddLastArg(CmdArgs, options::OPT_fexperimental_new_pass_manager,
+                  options::OPT_fno_experimental_new_pass_manager);
+
+  // Add by phantom
+  if(Args.getLastArg(options::OPT_fpscan)){
+		CmdArgs.push_back("-mfpscan");
+	}
+  if(Args.getLastArg(options::OPT_randcont)){
+		CmdArgs.push_back("-mrandcont");
+	}
+
   ObjCRuntime Runtime = AddObjCRuntimeArgs(Args, Inputs, CmdArgs, rewriteKind);
   RenderObjCOptions(TC, D, RawTriple, Args, Runtime, rewriteKind != RK_None,
                     Input, CmdArgs);

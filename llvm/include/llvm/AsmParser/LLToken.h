@@ -250,6 +250,7 @@ enum Kind {
   kw_immarg,
   kw_byref,
   kw_mustprogress,
+  kw_no_spilling_func,
 
   kw_type,
   kw_opaque,

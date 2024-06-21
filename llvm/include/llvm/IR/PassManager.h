@@ -61,6 +61,10 @@
 #include <utility>
 #include <vector>
 
+// Add by phantom
+// #include "llvm/Transforms/fpscan/fpscan.h"
+// #include "llvm/Transforms/RandomContent/RandomContent.h"
+
 namespace llvm {
 
 /// A special type used by analysis passes to provide an address that

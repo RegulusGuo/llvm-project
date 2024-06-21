@@ -5744,6 +5744,10 @@ def sycl_std_EQ : Joined<["-"], "sycl-std=">, Group<sycl_Group>,
   MarshallingInfoEnum<LangOpts<"SYCLVersion">, "SYCL_None">,
   ShouldParseIf<!strconcat(fsycl_is_device.KeyPath, "||", fsycl_is_host.KeyPath)>;
 
+// Add by phantom
+def fpscan : Flag<["-","--"], "mfpscan">, Flags<[CC1Option]>, HelpText<"Scan and Tag Float Pointer">;
+def randcont : Flag<["-","--"], "mrandcont">, Flags<[CC1Option]>, HelpText<"Random Specific Sensitive Fileds">;
+
 defm cuda_approx_transcendentals : BoolFOption<"cuda-approx-transcendentals",
   LangOpts<"CUDADeviceApproxTranscendentals">, DefaultFalse,
   PosFlag<SetTrue, [CC1Option], "Use">, NegFlag<SetFalse, [], "Don't use">,

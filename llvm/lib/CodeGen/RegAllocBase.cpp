@@ -79,9 +79,15 @@ void RegAllocBase::seedLiveRegs() {
   }
 }
 
+bool RegAllocBase::isProtectedCalleeSavedReg(Register Reg) {
+  return Reg == 9 || Reg == 10 || (Reg >= 19 && Reg <= 28);
+}
+
 // Top-level driver to manage the queue of unassigned VirtRegs and call the
 // selectOrSplit implementation.
 void RegAllocBase::allocatePhysRegs() {
+  LIS->markFPRegs();
+  CalleeFPIntervals.clear();
   seedLiveRegs();
 
   // Continue assigning vregs one at a time to available physical registers.
@@ -143,8 +149,13 @@ void RegAllocBase::allocatePhysRegs() {
       continue;
     }
 
-    if (AvailablePhysReg)
-      Matrix->assign(*VirtReg, AvailablePhysReg);
+    // if (AvailablePhysReg)
+    //   Matrix->assign(*VirtReg, AvailablePhysReg);
+    if (AvailablePhysReg) {
+       Matrix->assign(*VirtReg, AvailablePhysReg);
+      if (!VirtReg->isSpillable() && isProtectedCalleeSavedReg(AvailablePhysReg))
+        CalleeFPIntervals.push_back(VirtReg);
+    }
 
     for (Register Reg : SplitVRegs) {
       assert(LIS->hasInterval(Reg));

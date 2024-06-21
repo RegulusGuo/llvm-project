@@ -1764,6 +1764,12 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
     return;
   }
 
+  if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
+      if (FD->hasAttr<NoSpillingFuncAttr>()) {
+          B.addAttribute(llvm::Attribute::NoSpillingFunc);
+      }
+  }
+
   // Track whether we need to add the optnone LLVM attribute,
   // starting with the default for this optimization level.
   bool ShouldAddOptNone =

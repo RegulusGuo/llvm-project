@@ -726,6 +726,14 @@ def Imm0_15Operand : AsmImmRange<0, 15>;
 def Imm0_31Operand : AsmImmRange<0, 31>;
 def Imm0_63Operand : AsmImmRange<0, 63>;
 
+def uimm3 : Operand<i64>, ImmLeaf<i64, [{ return Imm >= 0 && Imm < 8; }]> {
+  let ParserMatchClass = Imm0_7Operand;
+}
+
+def uimm1 : Operand<i64>, ImmLeaf<i64, [{ return Imm >= 0 && Imm < 2; }]> {
+  let ParserMatchClass = Imm0_1Operand;
+}
+
 def vecshiftL8 : Operand<i32>, ImmLeaf<i32, [{
   return (((uint32_t)Imm) < 8);
 }]> {
@@ -2005,6 +2013,23 @@ class ClearAuth<bits<1> data, string asm>
   let Inst{10} = data;
   let Inst{9-5} = 0b11111;
   let Inst{4-0} = Rd;
+}
+
+class AArch64InstRegVault<bit cryptoOp, bits<3> idx, dag outs, dag ins, string asm, string argstr>
+  : I<outs, ins, asm, argstr, "", []> {
+    bits<5> Rd;
+    bits<5> Rn;
+    bits<3> range;
+    bit direction;
+    
+    let Inst{31-21} = 0b11011010110;
+    let Inst{20}    = cryptoOp;
+    let Inst{19}    = direction;
+    let Inst{18-16} = range;
+    let Inst{15-13} = 0b100;
+    let Inst{12-10} = idx;
+    let Inst{9-5}   = Rn;
+    let Inst{4-0}   = Rd;
 }
 
 // Base class for the Armv8.4-A 8 and 16-bit flag manipulation instructions

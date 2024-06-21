@@ -76,7 +76,8 @@ bool VirtRegMap::runOnMachineFunction(MachineFunction &mf) {
 }
 
 void VirtRegMap::grow() {
-  unsigned NumRegs = MF->getRegInfo().getNumVirtRegs();
+  // unsigned NumRegs = MF->getRegInfo().getNumVirtRegs();
+  unsigned NumRegs = MF->getRegInfo().getNumVirtRegs() + 1;
   Virt2PhysMap.resize(NumRegs);
   Virt2StackSlotMap.resize(NumRegs);
   Virt2SplitMap.resize(NumRegs);

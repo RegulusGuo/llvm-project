@@ -1499,10 +1499,10 @@ bool CommandLineParser::ParseCommandLineOptions(int argc,
         HaveDoubleDash = true;
         ArgName = ArgName.substr(1);
       }
-
+      // *Errs << "Looking up handler for opition: " << argv[i] << "\n";
       Handler = LookupLongOption(*ChosenSubCommand, ArgName, Value,
                                  LongOptionsUseDoubleDash, HaveDoubleDash);
-
+      // *Errs << "Handler is " << Handler << "\n";
       // Check to see if this "option" is really a prefixed or grouped argument.
       if (!Handler && !(LongOptionsUseDoubleDash && HaveDoubleDash))
         Handler = HandlePrefixedOrGroupedOption(ArgName, Value, ErrorParsing,

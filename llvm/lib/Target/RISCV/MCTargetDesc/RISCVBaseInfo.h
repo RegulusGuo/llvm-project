@@ -43,6 +43,7 @@ enum {
   InstFormatCB = 15,
   InstFormatCJ = 16,
   InstFormatOther = 17,
+  InstFormatRegVault = 18,
 
   InstFormatMask = 31,
   InstFormatShift = 0,
@@ -159,6 +160,7 @@ namespace RISCVOp {
 enum OperandType : unsigned {
   OPERAND_FIRST_RISCV_IMM = MCOI::OPERAND_FIRST_TARGET,
   OPERAND_UIMM4 = OPERAND_FIRST_RISCV_IMM,
+  OPERAND_UIMM3,
   OPERAND_UIMM5,
   OPERAND_UIMM12,
   OPERAND_SIMM12,

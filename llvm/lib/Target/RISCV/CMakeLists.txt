@@ -38,6 +38,9 @@ add_llvm_target(RISCVCodeGen
   RISCVTargetMachine.cpp
   RISCVTargetObjectFile.cpp
   RISCVTargetTransformInfo.cpp
+  # Add by SimonSungm
+  00-PPPRAP.cpp 
+  00-PPPLSP.cpp
 
   LINK_COMPONENTS
   Analysis
