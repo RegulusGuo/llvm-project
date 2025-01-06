@@ -1193,8 +1193,6 @@ static void addSanitizers(const Triple &TargetTriple,
 /// `EmitAssembly` at some point in the future when the default switches.
 void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
     BackendAction Action, std::unique_ptr<raw_pwrite_stream> OS) {
-  // errs() << "[clang] In EmitAssemblyWithNewPassManager\n";
-  // errs() << "[clang] \033[1;32mCodeGenOpts.fpScaner == " << CodeGenOpts.fpScaner << "\033[0m\n";
   TimeRegion Region(CodeGenOpts.TimePasses ? &CodeGenerationTime : nullptr);
   setCommandLineOpts(CodeGenOpts);
 
@@ -1325,6 +1323,20 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
 
   ModulePassManager MPM;
 
+  if (CodeGenOpts.fpScan){
+    PB.registerOptimizerLastEPCallback(
+          [](ModulePassManager &MPM, PassBuilder::OptimizationLevel Level) {
+            MPM.addPass(fpscan());
+          });
+  }
+    
+  if (CodeGenOpts.randCont) {
+    PB.registerOptimizerLastEPCallback(
+        [](ModulePassManager &MPM, PassBuilder::OptimizationLevel Level) {
+          MPM.addPass(RandomContent());
+        });
+  }
+
   if (!CodeGenOpts.DisableLLVMPasses) {
     // Map our optimization levels into one of the distinct levels used to
     // configure the pipeline.
@@ -1414,27 +1426,6 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
     //     MPM.addPass(fpscan());
     //   }
     // }
-    
-    // if (CodeGenOpts.fpScaner){
-      // errs() << "\033[1;31m[clang] Add fpscan Pass\033[0m\n"; 
-
-      PB.registerOptimizerLastEPCallback(
-            [](ModulePassManager &MPM, PassBuilder::OptimizationLevel Level) {
-              MPM.addPass(fpscan());
-            });
-
-        // PB.registerPipelineStartEPCallback([](ModulePassManager &MPM) {
-        //  MPM.addPass(fpscan());
-        // });
-    // }
-    
-    if (CodeGenOpts.randomContent) {
-      errs() << "[clang] Add RandomConten Pass\n"; 
-      PB.registerOptimizerLastEPCallback(
-          [](ModulePassManager &MPM, PassBuilder::OptimizationLevel Level) {
-            MPM.addPass(RandomContent());
-          });
-    }
 
     if (CodeGenOpts.OptimizationLevel == 0) {
       MPM = PB.buildO0DefaultPipeline(Level, IsLTO || IsThinLTO);

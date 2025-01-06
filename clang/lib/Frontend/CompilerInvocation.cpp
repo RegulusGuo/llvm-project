@@ -1602,9 +1602,6 @@ bool CompilerInvocation::ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args,
     }
   }
 
-  Opts.fpScaner = Args.hasArg(OPT_fpscan);
-  Opts.randomContent = Args.hasArg(OPT_randcont);
-
   // PIC defaults to -fno-direct-access-external-data while non-PIC defaults to
   // -fdirect-access-external-data.
   Opts.DirectAccessExternalData =

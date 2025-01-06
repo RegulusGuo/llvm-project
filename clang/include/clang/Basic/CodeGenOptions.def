@@ -27,6 +27,8 @@ CODEGENOPT(Name, Bits, Default)
 CODEGENOPT(Name, Bits, Default)
 #endif
 
+CODEGENOPT(fpScan, 1, 0) ///< -mfpscan
+CODEGENOPT(randCont, 1, 0) ///< -mrandcont
 CODEGENOPT(DisableIntegratedAS, 1, 0) ///< -no-integrated-as
 ENUM_CODEGENOPT(CompressDebugSections, llvm::DebugCompressionType, 2,
                 llvm::DebugCompressionType::None)

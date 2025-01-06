@@ -16,6 +16,7 @@
 #include "llvm/Target/TargetMachine.h"
 
 //===== Add by SimonSungm =====//
+//==== Modified by ruorong ====//
 
 #define DEBUG_TYPE "aarch64-rap"
 
@@ -91,8 +92,21 @@ bool AArch64PPPRAP::runOnMachineFunction(MachineFunction &MF) {
           if (next->mayStore() && (next->getOperand(0).isReg())) {
             if (next->getOperand(0).getReg() == AArch64::LR) {
               DebugLoc DL = MBB.findDebugLoc(next);
-              BuildMI(MBB, insert, DL, TII.get(AArch64::CRETK), AArch64::LR)
-                  // .addReg(AArch64::LR) /* ra */
+              BuildMI(MBB, insert, DL, TII.get(AArch64::CRETK))
+                  .addReg(AArch64::LR) /* ra */
+                  .addReg(AArch64::SP) /* sp */
+                  .addImm(0)
+                  .addImm(7);
+              Changed = true;
+              break;
+            }
+          }
+          if (next->mayStore() && (next->getNumOperands() > 1) &&
+                     (next->getOperand(1).isReg())) {
+            if (next->getOperand(1).getReg() == AArch64::LR) {
+              DebugLoc DL = MBB.findDebugLoc(next);
+              BuildMI(MBB, insert, DL, TII.get(AArch64::CRETK))
+                  .addReg(AArch64::LR) /* ra */
                   .addReg(AArch64::SP) /* sp */
                   .addImm(0)
                   .addImm(7);
@@ -101,17 +115,31 @@ bool AArch64PPPRAP::runOnMachineFunction(MachineFunction &MF) {
             }
           }
           next = next->getNextNode();
+          insert = insert->getNextNode();
         }
       } else if (MI.getFlag(
                      MachineInstr::FrameDestroy)) { // find prev load using x1
         MachineInstr *prev = MI.getPrevNode();
         while (prev) {
           if (prev->mayLoad() && (prev->getOperand(0).isReg())) {
-            if (prev->getOperand(0).getReg() == AArch64::X1) {
+            if (prev->getOperand(0).getReg() == AArch64::LR) {
               DebugLoc DL = MBB.findDebugLoc(prev);
-              BuildMI(MBB, prev->getNextNode(), DL, TII.get(AArch64::CRDTK),
-                      AArch64::LR)
-                  // .addReg(AArch64::LR) /* ra */
+              BuildMI(MBB, prev->getNextNode(), DL, TII.get(AArch64::CRDTK))
+                  .addReg(AArch64::LR) /* ra */
+                  .addReg(AArch64::SP) /* sp */
+                  .addImm(0)
+                  .addImm(7);
+              MIBundleBuilder(MBB, prev, prev->getNextNode());
+              Changed = true;
+              break;
+            }
+          }
+          if (prev->mayLoad() && (prev->getNumOperands() > 1) &&
+                     (prev->getOperand(1).isReg())) {
+            if (prev->getOperand(1).getReg() == AArch64::LR) {
+              DebugLoc DL = MBB.findDebugLoc(prev);
+              BuildMI(MBB, prev->getNextNode(), DL, TII.get(AArch64::CRDTK))
+                  .addReg(AArch64::LR) /* ra */
                   .addReg(AArch64::SP) /* sp */
                   .addImm(0)
                   .addImm(7);
