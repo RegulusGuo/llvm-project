@@ -84,74 +84,62 @@ bool AArch64PPPRAP::runOnMachineFunction(MachineFunction &MF) {
 
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
   for (MachineBasicBlock &MBB : MF) {
-    for (MachineInstr &MI : MBB) {
-      if (MI.getFlag(MachineInstr::FrameSetup)) { // find next store using x1
-        MachineInstr *next = MI.getNextNode();
-        MachineInstr *insert = MI.getNextNode();
-        while (next) {
-          if (next->mayStore() && (next->getOperand(0).isReg())) {
-            if (next->getOperand(0).getReg() == AArch64::LR) {
+    MachineInstr *next = &MBB.front();
+    MachineInstr *prev = &MBB.back();
+    
+    // for (MachineInstr &MI : MBB) {
+    // if (next->getFlag(MachineInstr::FrameSetup)) { // find next store using lr
+    while (next) {
+      bool found = false;
+      if (next->mayStore()) {
+        for (int i = 0; i < 4; i++) {
+          if ((next->getNumOperands() > i) && (next->getOperand(i).isReg())) {
+            if (next->getOperand(i).getReg() == AArch64::LR) {
               DebugLoc DL = MBB.findDebugLoc(next);
-              BuildMI(MBB, insert, DL, TII.get(AArch64::CRETK))
+              BuildMI(MBB, next, DL, TII.get(AArch64::CRETK))
                   .addReg(AArch64::LR) /* ra */
                   .addReg(AArch64::SP) /* sp */
                   .addImm(0)
                   .addImm(7);
               Changed = true;
+              found = true;
               break;
             }
           }
-          if (next->mayStore() && (next->getNumOperands() > 1) &&
-                     (next->getOperand(1).isReg())) {
-            if (next->getOperand(1).getReg() == AArch64::LR) {
-              DebugLoc DL = MBB.findDebugLoc(next);
-              BuildMI(MBB, insert, DL, TII.get(AArch64::CRETK))
-                  .addReg(AArch64::LR) /* ra */
-                  .addReg(AArch64::SP) /* sp */
-                  .addImm(0)
-                  .addImm(7);
-              Changed = true;
-              break;
-            }
-          }
-          next = next->getNextNode();
-          insert = insert->getNextNode();
-        }
-      } else if (MI.getFlag(
-                     MachineInstr::FrameDestroy)) { // find prev load using x1
-        MachineInstr *prev = MI.getPrevNode();
-        while (prev) {
-          if (prev->mayLoad() && (prev->getOperand(0).isReg())) {
-            if (prev->getOperand(0).getReg() == AArch64::LR) {
-              DebugLoc DL = MBB.findDebugLoc(prev);
-              BuildMI(MBB, prev->getNextNode(), DL, TII.get(AArch64::CRDTK))
-                  .addReg(AArch64::LR) /* ra */
-                  .addReg(AArch64::SP) /* sp */
-                  .addImm(0)
-                  .addImm(7);
-              MIBundleBuilder(MBB, prev, prev->getNextNode());
-              Changed = true;
-              break;
-            }
-          }
-          if (prev->mayLoad() && (prev->getNumOperands() > 1) &&
-                     (prev->getOperand(1).isReg())) {
-            if (prev->getOperand(1).getReg() == AArch64::LR) {
-              DebugLoc DL = MBB.findDebugLoc(prev);
-              BuildMI(MBB, prev->getNextNode(), DL, TII.get(AArch64::CRDTK))
-                  .addReg(AArch64::LR) /* ra */
-                  .addReg(AArch64::SP) /* sp */
-                  .addImm(0)
-                  .addImm(7);
-              MIBundleBuilder(MBB, prev, prev->getNextNode());
-              Changed = true;
-              break;
-            }
-          }
-          prev = prev->getPrevNode();
         }
       }
+      if (found) break;
+      next = next->getNextNode();
     }
+      // } 
+    // if (prev->getFlag(MachineInstr::FrameDestroy)) { // find prev load using x1
+    if (!prev) continue;
+    prev = prev->getPrevNode();
+    while (prev) {
+      bool found = false;
+      if (prev->mayLoad()) {
+        for (int i = 0; i < 4; i++) {
+          if ((prev->getNumOperands() > i) && (prev->getOperand(i).isReg())) {
+            if (prev->getOperand(i).getReg() == AArch64::LR) {
+              DebugLoc DL = MBB.findDebugLoc(prev);
+              BuildMI(MBB, prev->getNextNode(), DL, TII.get(AArch64::CRDTK))
+                  .addReg(AArch64::LR) /* ra */
+                  .addReg(AArch64::SP) /* sp */
+                  .addImm(0)
+                  .addImm(7);
+              MIBundleBuilder(MBB, prev, prev->getNextNode());
+              Changed = true;
+              found = true;
+              break;
+            }
+          }
+        }
+      }
+      if (found) break;
+      prev = prev->getPrevNode();
+    }
+      // }
+    // }
   }
   return Changed;
 }
