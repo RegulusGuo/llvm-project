@@ -189,8 +189,8 @@ namespace llvm
             MemcpyFT = FunctionType::get(voidType, {voidPtrType, voidPtrType, int64Type}, false);
             MemsetFT = FunctionType::get(voidType, {voidPtrType, int8Type, int64Type}, false);
 
-            CREAK = InlineAsm::get(PECFT, "mov $0, $1\ncreak $0, $2, 0, 7", "=r,r,r", false);
-            CRDAK = InlineAsm::get(PECFT, "mov $0, $1\ncrdak $0, $2, 0, 7", "=r,r,r", false);
+            CREAK = InlineAsm::get(PECFT, "creak $0, $1, $2, 0, 7", "=r,r,r", false);
+            CRDAK = InlineAsm::get(PECFT, "crdak $0, $1, $2, 0, 7", "=r,r,r", false);
             encryptFunc = FunctionCallee(PECFT, CREAK);
             decryptFunc = FunctionCallee(PECFT, CRDAK);
             encryptFuncCheck = module->getOrInsertFunction("encryptFunc", PECFT);

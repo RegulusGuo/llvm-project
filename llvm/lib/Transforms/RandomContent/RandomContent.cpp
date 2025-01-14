@@ -5,7 +5,7 @@ using namespace ::llvm;
 namespace {
 std::map<std::string, std::set<int>> randomFields = {
     {"struct.cred",
-     {2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 21, 22, 23, 24, 25}},
+     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}},
     //{"struct.STACK_TARGET", {2,3}},
     // {"struct.selinux_state", {0, 1, 2, 3, 5}},
 };
@@ -37,13 +37,13 @@ Instrument::Instrument(Module &M) : M(M) {
   FunctionType *PEC32InstType =
       FunctionType::get(int64Type, {int32Type, int64PtrType}, false);
   enc64Inst =
-      InlineAsm::get(PEC64InstType, "mov $0, $1\ncrebk $0, $2, 0, 7", "=r,r,r", false);
+      InlineAsm::get(PEC64InstType, "crebk $0, $1, $2, 0, 7", "=r,r,r", false);
   dec64Inst =
-      InlineAsm::get(PEC64InstType, "mov $0, $1\ncrdbk $0, $2, 0, 7", "=r,r,r", false);
+      InlineAsm::get(PEC64InstType, "crdbk $0, $1, $2, 0, 7", "=r,r,r", false);
   enc32Inst =
-      InlineAsm::get(PEC32InstType, "mov $0, $1\ncrebk $0, $2, 0, 3", "=r,r,r", false);
+      InlineAsm::get(PEC32InstType, "crebk $0, $1, $2, 0, 3", "=r,r,r", false);
   dec32Inst =
-      InlineAsm::get(PEC64InstType, "mov $0, $1\ncrdbk $0, $2, 0, 3", "=r,r,r", false);
+      InlineAsm::get(PEC64InstType, "crdbk $0, $1, $2, 0, 3", "=r,r,r", false);
   enc64Func = FunctionCallee(PEC64InstType, enc64Inst);
   dec64Func = FunctionCallee(PEC64InstType, dec64Inst);
   enc32Func = FunctionCallee(PEC32InstType, enc32Inst);
