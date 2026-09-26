@@ -313,6 +313,154 @@ exit:
   ret void
 }
 
+;===----------------------------------------------------------------------===;
+; 3. Dead stack slot (alloca) elimination
+;===----------------------------------------------------------------------===;
+
+; %x is never read and its address does not escape, so the store and the alloca
+; are removed.
+define dso_local i32 @dead_stack_slot(i32 %argc, ptr %argv) {
+; CHECK-LABEL: define dso_local i32 @dead_stack_slot(
+; CHECK-SAME: i32 [[ARGC:%.*]], ptr [[ARGV:%.*]]) {
+; CHECK-NEXT:  [[ENTRY:.*:]]
+; CHECK-NEXT:    ret i32 0
+;
+entry:
+  %x = alloca i32
+  store i32 10, ptr %x
+  ret i32 0
+}
+
+; Every write to %s is removed with it: a store, writes through a GEP by memset
+; and memcpy, and the lifetime markers. The load from %s is dead, so it does not
+; count as a read. Once the store is gone, the computation of the stored value
+; %v is dead as well.
+define void @stack_slot_writes(i32 %n, ptr %src) {
+; CHECK-LABEL: define void @stack_slot_writes(
+; CHECK-SAME: i32 [[N:%.*]], ptr [[SRC:%.*]]) {
+; CHECK-NEXT:  [[ENTRY:.*:]]
+; CHECK-NEXT:    ret void
+;
+entry:
+  %s = alloca { i32, [8 x i8] }
+  call void @llvm.lifetime.start.p0(ptr %s)
+  %v = call i32 @pure(i32 %n)
+  store i32 %v, ptr %s
+  %arr = getelementptr inbounds { i32, [8 x i8] }, ptr %s, i64 0, i32 1
+  call void @llvm.memset.p0.i64(ptr %arr, i8 0, i64 8, i1 false)
+  call void @llvm.memcpy.p0.p0.i64(ptr %arr, ptr %src, i64 8, i1 false)
+  %dead.load = load i32, ptr %s
+  call void @llvm.lifetime.end.p0(ptr %s)
+  ret void
+}
+
+; Stack slots are kept, together with their writes, if they are read (%read),
+; if their address escapes (%escapes), if they are accessed with a volatile
+; store (%volatile), or if they are the source of a memcpy (%copied).
+define i32 @live_stack_slots(i32 %n, ptr %dst) {
+; CHECK-LABEL: define i32 @live_stack_slots(
+; CHECK-SAME: i32 [[N:%.*]], ptr [[DST:%.*]]) {
+; CHECK-NEXT:  [[ENTRY:.*:]]
+; CHECK-NEXT:    [[READ:%.*]] = alloca i32, align 4
+; CHECK-NEXT:    [[ESCAPES:%.*]] = alloca i32, align 4
+; CHECK-NEXT:    [[VOLATILE:%.*]] = alloca i32, align 4
+; CHECK-NEXT:    [[COPIED:%.*]] = alloca i32, align 4
+; CHECK-NEXT:    store i32 [[N]], ptr [[READ]], align 4
+; CHECK-NEXT:    store i32 [[N]], ptr [[ESCAPES]], align 4
+; CHECK-NEXT:    call void @use(ptr [[ESCAPES]])
+; CHECK-NEXT:    store volatile i32 [[N]], ptr [[VOLATILE]], align 4
+; CHECK-NEXT:    store i32 [[N]], ptr [[COPIED]], align 4
+; CHECK-NEXT:    call void @llvm.memcpy.p0.p0.i64(ptr [[DST]], ptr [[COPIED]], i64 4, i1 false)
+; CHECK-NEXT:    [[R:%.*]] = load i32, ptr [[READ]], align 4
+; CHECK-NEXT:    ret i32 [[R]]
+;
+entry:
+  %read = alloca i32
+  %escapes = alloca i32
+  %volatile = alloca i32
+  %copied = alloca i32
+  store i32 %n, ptr %read
+  store i32 %n, ptr %escapes
+  call void @use(ptr %escapes)
+  store volatile i32 %n, ptr %volatile
+  store i32 %n, ptr %copied
+  call void @llvm.memcpy.p0.p0.i64(ptr %dst, ptr %copied, i64 4, i1 false)
+  %r = load i32, ptr %read
+  ret i32 %r
+}
+
+; The address of %a is stored in %pa, which is read, so %a can be read through
+; the loaded pointer and is kept. The address of %b is stored in %pb, which is
+; never read, so both %b and %pb are removed. %node stores its own address,
+; which nothing can read either.
+define i32 @address_stored_in_stack_slot(i32 %n) {
+; CHECK-LABEL: define i32 @address_stored_in_stack_slot(
+; CHECK-SAME: i32 [[N:%.*]]) {
+; CHECK-NEXT:  [[ENTRY:.*:]]
+; CHECK-NEXT:    [[A:%.*]] = alloca i32, align 4
+; CHECK-NEXT:    [[PA:%.*]] = alloca ptr, align 8
+; CHECK-NEXT:    store i32 [[N]], ptr [[A]], align 4
+; CHECK-NEXT:    store ptr [[A]], ptr [[PA]], align 8
+; CHECK-NEXT:    [[P:%.*]] = load ptr, ptr [[PA]], align 8
+; CHECK-NEXT:    [[V:%.*]] = load i32, ptr [[P]], align 4
+; CHECK-NEXT:    ret i32 [[V]]
+;
+entry:
+  %a = alloca i32
+  %pa = alloca ptr
+  store i32 %n, ptr %a
+  store ptr %a, ptr %pa
+  %b = alloca i32
+  %pb = alloca ptr
+  store i32 %n, ptr %b
+  store ptr %b, ptr %pb
+  %node = alloca { ptr, i32 }
+  store ptr %node, ptr %node
+  %p = load ptr, ptr %pa
+  %v = load i32, ptr %p
+  ret i32 %v
+}
+
+; A variable that lived in a removed stack slot is described by the values
+; stored to it instead: the #dbg_declare becomes a #dbg_value at the store.
+define i32 @dead_stack_slot_debug_info(i32 %n) !dbg !14 {
+; CHECK-LABEL: define i32 @dead_stack_slot_debug_info(
+; CHECK-SAME: i32 [[N:%.*]]) !dbg [[DBG14:![0-9]+]] {
+; CHECK-NEXT:  [[ENTRY:.*:]]
+; CHECK-NEXT:      #dbg_value(i32 [[N]], [[META16:![0-9]+]], !DIExpression(), [[META17:![0-9]+]])
+; CHECK-NEXT:    ret i32 0, !dbg [[DBG18:![0-9]+]]
+;
+entry:
+  %x = alloca i32, !dbg !16
+    #dbg_declare(ptr %x, !15, !DIExpression(), !16)
+  store i32 %n, ptr %x, !dbg !16
+  ret i32 0, !dbg !17
+}
+
+; Typical unoptimized code for "if (c) x = x + 1; return x0;" where x is a
+; local variable that is never read: removing the dead stack slot empties
+; %then, which is then removed by dead block elimination together with the
+; branch, leaving a single block.
+define i32 @dead_stack_slot_and_blocks(i1 %c, i32 %x) {
+; CHECK-LABEL: define i32 @dead_stack_slot_and_blocks(
+; CHECK-SAME: i1 [[C:%.*]], i32 [[X:%.*]]) {
+; CHECK-NEXT:  [[ENTRY:.*:]]
+; CHECK-NEXT:    ret i32 [[X]]
+;
+entry:
+  %x.addr = alloca i32
+  store i32 %x, ptr %x.addr
+  br i1 %c, label %then, label %end
+
+then:
+  %inc = add i32 %x, 1
+  store i32 %inc, ptr %x.addr
+  br label %end
+
+end:
+  ret i32 %x
+}
+
 !llvm.dbg.cu = !{!0}
 !llvm.module.flags = !{!3, !4}
 
@@ -330,3 +478,8 @@ exit:
 !11 = !DILocation(line: 2, column: 1, scope: !5)
 !12 = !DILocation(line: 3, column: 1, scope: !5)
 !13 = !DILocation(line: 4, column: 1, scope: !5)
+!14 = distinct !DISubprogram(name: "dead_stack_slot_debug_info", scope: !1, file: !1, line: 10, type: !6, scopeLine: 10, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0, retainedNodes: !18)
+!15 = !DILocalVariable(name: "x", scope: !14, file: !1, line: 11, type: !2)
+!16 = !DILocation(line: 11, column: 1, scope: !14)
+!17 = !DILocation(line: 12, column: 1, scope: !14)
+!18 = !{!15}
