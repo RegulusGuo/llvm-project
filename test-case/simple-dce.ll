@@ -137,14 +137,10 @@ entry:
 define i32 @debug_info_salvage(i32 %x) !dbg !5 {
 ; CHECK-LABEL: define i32 @debug_info_salvage(
 ; CHECK-SAME: i32 [[X:%.*]]) !dbg [[DBG4:![0-9]+]] {
-; CHECK-NEXT:  [[ENTRY:.*:]]
-; CHECK-NEXT:    br label %[[DEF:.*]]
-; CHECK:       [[USE:.*]]:
-; CHECK-NEXT:      #dbg_value(i32 [[X]], [[META10:![0-9]+]], !DIExpression(DW_OP_plus_uconst, 1, DW_OP_constu, 3, DW_OP_mul, DW_OP_stack_value), [[META11:![0-9]+]])
-; CHECK-NEXT:    ret i32 [[X]], !dbg [[DBG12:![0-9]+]]
-; CHECK:       [[DEF]]:
-; CHECK-NEXT:      #dbg_value(i32 [[X]], [[META9:![0-9]+]], !DIExpression(DW_OP_plus_uconst, 1, DW_OP_stack_value), [[META13:![0-9]+]])
-; CHECK-NEXT:    br label %[[USE]]
+; CHECK-NEXT:  [[DEF:.*:]]
+; CHECK-NEXT:      #dbg_value(i32 [[X]], [[META9:![0-9]+]], !DIExpression(DW_OP_plus_uconst, 1, DW_OP_stack_value), [[META11:![0-9]+]])
+; CHECK-NEXT:      #dbg_value(i32 [[X]], [[META10:![0-9]+]], !DIExpression(DW_OP_plus_uconst, 1, DW_OP_constu, 3, DW_OP_mul, DW_OP_stack_value), [[META12:![0-9]+]])
+; CHECK-NEXT:    ret i32 [[X]], !dbg [[DBG13:![0-9]+]]
 ;
 entry:
   br label %def
@@ -158,6 +154,163 @@ def:
   %a = add i32 %x, 1, !dbg !11
     #dbg_value(i32 %a, !9, !DIExpression(), !11)
   br label %use
+}
+
+;===----------------------------------------------------------------------===;
+; 2. Dead block elimination
+;===----------------------------------------------------------------------===;
+
+; Once %dead is removed, %block.1 only jumps to %block.2,
+; so it is removed and %entry branches to %block.2 on both edges.
+; That branch becomes unconditional, which makes %cmp dead, and %block.2, now
+; reached only from %entry, is merged into %entry.
+define i32 @dead_blocks(i32 %x) {
+; CHECK-LABEL: define i32 @dead_blocks(
+; CHECK-SAME: i32 [[X:%.*]]) {
+; CHECK-NEXT:  [[ENTRY:.*:]]
+; CHECK-NEXT:    ret i32 [[X]]
+;
+entry:
+  %cmp = icmp sgt i32 %x, 0
+  br i1 %cmp, label %block.1, label %block.2
+
+block.1:
+  %dead = add i32 %x, 1
+  br label %block.2
+
+block.2:
+  ret i32 %x
+}
+
+; A conditional branch (in %left) and a switch (in %right) whose destinations
+; are all the same block become unconditional branches. The PHI in %join keeps
+; one entry for the remaining edge from %right, and %cmp becomes dead. %right is
+; then merged into %left, whose only successor it is.
+define i32 @branch_to_common_successor(i1 %c, i32 %x, i32 %y) {
+; CHECK-LABEL: define i32 @branch_to_common_successor(
+; CHECK-SAME: i1 [[C:%.*]], i32 [[X:%.*]], i32 [[Y:%.*]]) {
+; CHECK-NEXT:  [[ENTRY:.*]]:
+; CHECK-NEXT:    br i1 [[C]], label %[[LEFT:.*]], label %[[JOIN:.*]]
+; CHECK:       [[LEFT]]:
+; CHECK-NEXT:    call void @unknown(i32 [[X]])
+; CHECK-NEXT:    call void @unknown(i32 [[Y]])
+; CHECK-NEXT:    br label %[[JOIN]]
+; CHECK:       [[JOIN]]:
+; CHECK-NEXT:    [[R:%.*]] = phi i32 [ [[X]], %[[ENTRY]] ], [ [[Y]], %[[LEFT]] ]
+; CHECK-NEXT:    ret i32 [[R]]
+;
+entry:
+  br i1 %c, label %left, label %join
+
+left:
+  call void @unknown(i32 %x)
+  %cmp = icmp eq i32 %x, %y
+  br i1 %cmp, label %right, label %right
+
+right:
+  call void @unknown(i32 %y)
+  switch i32 %y, label %join [
+  i32 0, label %join
+  i32 1, label %join
+  ]
+
+join:
+  %r = phi i32 [ %x, %entry ], [ %y, %right ], [ %y, %right ], [ %y, %right ]
+  ret i32 %r
+}
+
+; %fwd only jumps to %join: it is removed, %then branches to %join directly,
+; and the PHI entry for %fwd moves to %then. %fwd.conflict is kept: its
+; predecessor %else also branches to %join directly, and the PHI needs a
+; different value on each of the two paths, which a single edge from %else
+; could not provide.
+define i32 @forwarding_blocks_and_phis(i1 %c, i1 %d) {
+; CHECK-LABEL: define i32 @forwarding_blocks_and_phis(
+; CHECK-SAME: i1 [[C:%.*]], i1 [[D:%.*]]) {
+; CHECK-NEXT:  [[ENTRY:.*:]]
+; CHECK-NEXT:    br i1 [[C]], label %[[THEN:.*]], label %[[ELSE:.*]]
+; CHECK:       [[THEN]]:
+; CHECK-NEXT:    call void @unknown(i32 1)
+; CHECK-NEXT:    br label %[[JOIN:.*]]
+; CHECK:       [[ELSE]]:
+; CHECK-NEXT:    call void @unknown(i32 2)
+; CHECK-NEXT:    br i1 [[D]], label %[[FWD_CONFLICT:.*]], label %[[JOIN]]
+; CHECK:       [[FWD_CONFLICT]]:
+; CHECK-NEXT:    br label %[[JOIN]]
+; CHECK:       [[JOIN]]:
+; CHECK-NEXT:    [[R:%.*]] = phi i32 [ 3, %[[FWD_CONFLICT]] ], [ 2, %[[ELSE]] ], [ 1, %[[THEN]] ]
+; CHECK-NEXT:    ret i32 [[R]]
+;
+entry:
+  br i1 %c, label %then, label %else
+
+then:
+  call void @unknown(i32 1)
+  br label %fwd
+
+fwd:
+  br label %join
+
+else:
+  call void @unknown(i32 2)
+  br i1 %d, label %fwd.conflict, label %join
+
+fwd.conflict:
+  br label %join
+
+join:
+  %r = phi i32 [ 1, %fwd ], [ 2, %else ], [ 3, %fwd.conflict ]
+  ret i32 %r
+}
+
+; Blocks that cannot be reached from the entry block are removed, including
+; unreachable loops and the side effects in them, which can never execute. The
+; PHI in %exit loses its entry for %dead.loop and is replaced by %x; %exit is
+; then merged into %entry.
+define i32 @unreachable_blocks(i32 %x, ptr %p) {
+; CHECK-LABEL: define i32 @unreachable_blocks(
+; CHECK-SAME: i32 [[X:%.*]], ptr [[P:%.*]]) {
+; CHECK-NEXT:  [[ENTRY:.*:]]
+; CHECK-NEXT:    ret i32 [[X]]
+;
+entry:
+  br label %exit
+
+dead:
+  store i32 %x, ptr %p
+  br label %dead.loop
+
+dead.loop:
+  %i = phi i32 [ 0, %dead ], [ %i.next, %dead.loop ]
+  %i.next = add i32 %i, 1
+  %cmp = icmp eq i32 %i.next, %x
+  br i1 %cmp, label %exit, label %dead.loop
+
+exit:
+  %r = phi i32 [ %x, %entry ], [ %i.next, %dead.loop ]
+  ret i32 %r
+}
+
+; %spin only jumps to itself. It is an infinite loop, which is observable
+; behavior, so it is kept.
+define void @infinite_loop(i1 %c) {
+; CHECK-LABEL: define void @infinite_loop(
+; CHECK-SAME: i1 [[C:%.*]]) {
+; CHECK-NEXT:  [[ENTRY:.*:]]
+; CHECK-NEXT:    br i1 [[C]], label %[[SPIN:.*]], label %[[EXIT:.*]]
+; CHECK:       [[SPIN]]:
+; CHECK-NEXT:    br label %[[SPIN]]
+; CHECK:       [[EXIT]]:
+; CHECK-NEXT:    ret void
+;
+entry:
+  br i1 %c, label %spin, label %exit
+
+spin:
+  br label %spin
+
+exit:
+  ret void
 }
 
 !llvm.dbg.cu = !{!0}
