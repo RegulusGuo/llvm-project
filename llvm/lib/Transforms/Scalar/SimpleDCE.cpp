@@ -66,11 +66,11 @@ static void collectStackSlotWrites(AllocaInst &AI,
       } else if (auto *SI = dyn_cast<StoreInst>(User)) {
         // If the store's destination is the slot, add it to the Writes list.
         if (U.getOperandNo() == StoreInst::getPointerOperandIndex() &&
-            SI->isUnordered()) // Volatile stores are not dead, because they may be used for communication with other threads.
+            SI->isUnordered()) // Ordered atomic stores are not dead, because they may be used for communication with other threads.
           Writes.push_back(SI);
       } else if (auto *MI = dyn_cast<MemIntrinsic>(User)) {
         // If the memory intrinsic's destination is the slot, add it to the Writes list.
-        if (&U == &MI->getRawDestUse() && !MI->isVolatile())
+        if (&U == &MI->getRawDestUse() && !MI->isVolatile()) // Volatile stores are not dead, because they are observable and can have side effects.
           Writes.push_back(MI);
       } else if (isa<LifetimeIntrinsic>(User)) {
         Writes.push_back(User);
